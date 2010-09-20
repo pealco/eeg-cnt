@@ -2,7 +2,7 @@
 
 from numpy import array, flatnonzero, arange, shape, zeros, ones
 from struct import unpack, calcsize
-import tables
+from tables import *
 import sys
 import os.path
 try:
@@ -11,12 +11,49 @@ try:
 except:
     pass
 
+class ElectrodeDescription(IsDescription):
+    label          = StringCol(5)
+    reference      = BoolCol()
+    skip           = BoolCol()
+    reject         = BoolCol()
+    display        = BoolCol()
+    bad            = BoolCol()
+    n              = UIntCol()
+    avg_reference  = StringCol(1)
+    clipadd        = StringCol(1)
+    x_coord        = Float32Col()
+    y_coord        = Float32Col()
+    veog_wt        = Float32Col()
+    veog_std       = Float32Col()
+    snr            = Float32Col()
+    heog_wt        = Float32Col()
+    heog_std       = Float32Col()
+    baseline       = IntCol()
+    filtered       = StringCol(1)
+    fsp            = StringCol(1)
+    aux1_wt        = Float32Col()
+    aux1_std       = Float32Col()
+    senstivity     = Float32Col()
+    gain           = StringCol(1)
+    hipass         = StringCol(1)
+    lopass         = StringCol(1)
+    page           = StringCol(1)
+    size           = StringCol(1)
+    impedance      = StringCol(1)
+    physicalchnl   = StringCol(1)
+    rectify        = StringCol(1)
+    calib          = Float32Col()
+    
+
 class CNTData():
     """A class for reading Neuroscan .cnt files."""
 
     def __init__(self, filename):
         self.filename = filename
         self.file = open(self.filename, 'rb')
+        
+        h5_filename = self.filename[0:-3] + ".h5"
+        self.h5 = openFile(h5_filename)
         
         self.info = {}
         self.get_setup()
@@ -31,7 +68,51 @@ class CNTData():
         """Reads and unpacks binary data into the desired ctype."""
         chunk = self.file.read(calcsize(ctype) * size)
         return unpack(ctype * size, chunk)[0]
-
+    
+    def create_h5(self):
+        h5_filename = self.filename[0:-3] + ".h5"
+        self.h5 = tables.openFile(h5_filename, mode="a", title="EEG data")
+        
+    def save_electrode_data(self):
+        table = self.h5.createTable("/", 'electrodes', ElectrodeDescription, "Electrode information")
+        
+        electrode = table.row
+        for e in self.electrodes:
+            electrode["label"]         = e.label
+            electrode["reference"]     = e.reference      
+            electrode["skip"]          = e.skip           
+            electrode["reject"]        = e.reject         
+            electrode["display"]       = e.display        
+            electrode["bad"]           = e.bad            
+            electrode["n"]             = e.n              
+            electrode["avg_reference"] = e.avg_reference  
+            electrode["clipadd"]       = e.clipadd        
+            electrode["x_coord"]       = e.x_coord        
+            electrode["y_coord"]       = e.y_coord        
+            electrode["veog_wt"]       = e.veog_wt        
+            electrode["veog_std"]      = e.veog_std       
+            electrode["snr"]           = e.snr            
+            electrode["heog_wt"]       = e.heog_wt        
+            electrode["heog_std"]      = e.heog_std       
+            electrode["baseline"]      = e.baseline       
+            electrode["filtered"]      = e.filtered       
+            electrode["fsp"]           = e.fsp            
+            electrode["aux1_wt"]       = e.aux1_wt        
+            electrode["aux1_std"]      = e.aux1_std       
+            electrode["senstivity"]    = e.senstivity     
+            electrode["gain"]          = e.gain           
+            electrode["hipass"]        = e.hipass         
+            electrode["lopass"]        = e.lopass         
+            electrode["page"]          = e.page           
+            electrode["size"]          = e.size           
+            electrode["impedance"]     = e.impedance      
+            electrode["physicalchnl"]  = e.physicalchnl   
+            electrode["rectify"]       = e.rectify        
+            electrode["calib"]         = e.calib
+            electrode.append()
+            
+        table.flush()
+    
     def get_electrode(self):
         label = self.get('10s').strip('\x00')
         
@@ -256,8 +337,19 @@ class CNTData():
         self.info["autocorrectflag"]   = self.get('b')
         self.info["dcthreshold"]       = self.get('B')
     
-    def get_data(self):
-        file.seek(900 + (75 * self.info['nchannels']))
+    def save_continuous_data(self):
+        self.file.seek(900 + (75 * self.info['nchannels']))
+        
+        shape = (self.info["numsamples"], self.info["nchannels"])
+        atom  = Int16Atom()
+        filters = Filters(complevel5, complib='zlib')
+        
+        ca = self.h5.createCArray(self.h5.root, 'carray', atom, shape, filters=filters)
+        
+        
+        
+        
+        
     
 
         
