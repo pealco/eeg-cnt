@@ -70,8 +70,13 @@ class CNTData():
         
     def get(self, ctype, size=1):
         """Reads and unpacks binary data into the desired ctype."""
-        chunk = self.file.read(calcsize(ctype) * size)
-        return unpack(ctype * size, chunk)[0]
+        if size == 1:
+            size = ''
+        else:
+            size = str(size)
+        
+        chunk = self.file.read(calcsize(size + ctype))
+        return unpack(size + ctype, chunk)[0]
     
     def create_h5(self):
         print "creating h5 file"
@@ -80,10 +85,11 @@ class CNTData():
         
     def save_electrode_data(self):
         print "saving electrode data"
+        #print self.electrodes
         table = self.h5.createTable("/", 'electrodes', ElectrodeDescription, "Electrode information")
         
         electrode = table.row
-        for e in self.electrodes:
+        for k,e in self.electrodes.items():
             electrode["label"]         = e.label
             electrode["reference"]     = e.reference      
             electrode["skip"]          = e.skip           
@@ -330,7 +336,7 @@ class CNTData():
         self.info["scaletoolx2"]       = self.get('f')
         self.info["scaletooly2"]       = self.get('f')
         self.info["port"]              = self.get('h')
-        self.info["numsamples"]        = self.get('L')
+        self.info["nsamples"]        = self.get('L')
         self.info["filterflag"]        = self.get('b')
         self.info["lowcutoff"]         = self.get('f')
         self.info["lowpoles"]          = self.get('h')
@@ -347,23 +353,50 @@ class CNTData():
         self.info["autocorrectflag"]   = self.get('b')
         self.info["dcthreshold"]       = self.get('B')
     
+    
+    def get_channel(self, channel):
+        print channel
+        
+        nsamples  = self.info["nsamples"]
+        nchannels = self.info["nchannels"]
+        rate      = self.info["rate"]
+        
+        numbytes = 2 # FIXME
+        chan_offset = channel
+        sample_offset = nchannels
+        self.file.seek(900 + (chan_offset * numbytes))
+        chunk = 'h' + str(numbytes * (nchannels - 1)) + 'x'
+        divisor = int(rate)
+        
+        # Get data in chunks (or "blocks") of size nsamples/divisor, instead of all at once.
+        data = zeros(nsamples, dtype='int16')
+        for block in xrange((nsamples-1)/divisor):
+            a = block * divisor
+            b = (block+1) * divisor
+            data[a:b] = self.get(chunk * divisor)
+    
+        #data[b:] = list(self.get((chunk * (divisor - 1)) + 'h' + str((nchannels - 1 - channel) * numbytes) + 'x'))
+        remainder =  nsamples - b
+        data[b:] = self.get(chunk * (remainder-1) + "h" + ((nchannels * numbytes - (2 * channel)) * "x"))
+    
+        return data
+    
     def save_continuous_data(self):
         print "saving cont data"
-                
-        shape = (self.info["numsamples"], self.info["nchannels"])
-        print "shape", shape
+        
+        nsamples  = self.info["nsamples"]
+        nchannels = self.info["nchannels"]
+        
+        shape = (nsamples, nchannels)
         atom  = Int16Atom()
         filters = Filters(complevel=5, complib='zlib')
         
-        ca = self.h5.createCArray(self.h5.root, 'data', atom, shape, title="Continuous Data", filters=filters)
+        ca = self.h5.createCArray(self.h5.root, 'data', atom, shape, title="Continuous Integer Data", filters=filters)
         
-        self.file.seek(900 + (75 * self.info['nchannels']))
+        self.file.seek(900 + (75 * nchannels))
         
-        for sample in xrange(self.info["numsamples"]):
-            s = self.get('32h')
-            print s
-            ca[sample, :] = s
-        
+        for channel in xrange(nchannels):
+            ca[:, channel] = self.get_channel(channel)
 
 class Electrode():
     def __init__(self, label):
