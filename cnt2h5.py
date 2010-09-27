@@ -43,6 +43,7 @@ class ElectrodeDescription(IsDescription):
     physicalchnl   = StringCol(1)
     rectify        = StringCol(1)
     calib          = Float32Col()
+    conversion_coef= Float32Col()
     
 
 class CNTData():
@@ -51,9 +52,6 @@ class CNTData():
     def __init__(self, filename):
         self.filename = filename
         self.file = open(self.filename, 'rb')
-        
-        h5_filename = self.filename[0:-3] + ".h5"
-        self.h5 = openFile(h5_filename)
         
         self.info = {}
         self.get_setup()
@@ -64,16 +62,24 @@ class CNTData():
             electrode = self.get_electrode()
             self.electrodes[electrode.label] = electrode
         
+        self.create_h5()
+        self.save_electrode_data()
+        self.save_continuous_data()
+        
+        self.h5.close()
+        
     def get(self, ctype, size=1):
         """Reads and unpacks binary data into the desired ctype."""
         chunk = self.file.read(calcsize(ctype) * size)
         return unpack(ctype * size, chunk)[0]
     
     def create_h5(self):
-        h5_filename = self.filename[0:-3] + ".h5"
-        self.h5 = tables.openFile(h5_filename, mode="a", title="EEG data")
+        print "creating h5 file"
+        h5_filename = os.path.splitext(cnt_filename)[0] + ".h5"
+        self.h5 = openFile(h5_filename, mode="a", title="EEG data")
         
     def save_electrode_data(self):
+        print "saving electrode data"
         table = self.h5.createTable("/", 'electrodes', ElectrodeDescription, "Electrode information")
         
         electrode = table.row
@@ -108,7 +114,8 @@ class CNTData():
             electrode["impedance"]     = e.impedance      
             electrode["physicalchnl"]  = e.physicalchnl   
             electrode["rectify"]       = e.rectify        
-            electrode["calib"]         = e.calib
+            electrode["calib"]         = e.calib            
+            
             electrode.append()
             
         table.flush()
@@ -151,6 +158,8 @@ class CNTData():
         return electrode
     
     def get_setup(self):
+        print "getting setup"
+        
         self.file.seek(0)
         self.info["rev"]               = self.get('12s')
         self.info["nextfile"]          = self.get('l')
@@ -338,21 +347,23 @@ class CNTData():
         self.info["dcthreshold"]       = self.get('B')
     
     def save_continuous_data(self):
+        print "saving cont data"
+                
+        shape = (self.info["numsamples"], self.info["nchannels"])
+        print "shape", shape
+        atom  = Int16Atom()
+        filters = Filters(complevel=5, complib='zlib')
+        
+        ca = self.h5.createCArray(self.h5.root, 'data', atom, shape, title="Continuous Data", filters=filters)
+        
         self.file.seek(900 + (75 * self.info['nchannels']))
         
-        shape = (self.info["numsamples"], self.info["nchannels"])
-        atom  = Int16Atom()
-        filters = Filters(complevel5, complib='zlib')
+        for sample in xrange(self.info["numsamples"]):
+            s = self.get('32h')
+            print s
+            ca[sample, :] = s
         
-        ca = self.h5.createCArray(self.h5.root, 'carray', atom, shape, filters=filters)
-        
-        
-        
-        
-        
-    
 
-        
 class Electrode():
     def __init__(self, label):
         self.label = label
@@ -360,51 +371,39 @@ class Electrode():
     def __unicode__(self):
         return self.label
             
-            
-            
-            
-   
-
-    
-    
-    
-    
-
-def load(squid, h5f):
-    for channel in xrange(squid.channel_count):
-        print "Reading channel %d ..." % channel
-        h5f.root.raw_data[channel, :] = squid.get_channel(channel)
-
 if __name__ == "__main__":
-
-    for sqd_filename in sys.argv[1:]:
-        print sqd_filename
-
-        squid = SquidData(sqd_filename)
-
-        h5_filename = os.path.splitext(sqd_filename)[0] + ".h5"
-        array_shape = (squid.channel_count, squid.actual_sample_count)
-
-        h5f = tables.openFile(h5_filename, mode='w', title="MEG data")
-
-        h5f.createCArray(
-            where=h5f.root, 
-            name='raw_data', 
-            atom=tables.Int16Atom(), 
-            shape=array_shape, 
-            filters=tables.Filters(1))
-
-
-        h5f.createCArray(
-            where=h5f.root, 
-            name='convfactor', 
-            atom=tables.Float32Atom(), 
-            shape=shape(squid.convfactor), 
-            filters=tables.Filters(1))
-        h5f.root.convfactor[:] = squid.convfactor
-
-        load(squid, h5f)
-
-        print "Output %s" % h5_filename
-        h5f.close()
-        
+    
+    cnt_filename = "test.cnt"
+    cnt = CNTData(cnt_filename)
+    
+    #for cnt_filename in sys.argv[1:]:
+    #    print cnt_filename
+    #
+    #    cnt = CNTData(cnt_filename)
+    #
+    #    h5_filename = os.path.splitext(cnt_filename)[0] + ".h5"
+    #    array_shape = (squid.channel_count, squid.actual_sample_count)
+    #
+    #    h5f = tables.openFile(h5_filename, mode='w', title="MEG data")
+    #
+    #    h5f.createCArray(
+    #        where=h5f.root, 
+    #        name='raw_data', 
+    #        atom=tables.Int16Atom(), 
+    #        shape=array_shape, 
+    #        filters=tables.Filters(1))
+    #
+    #
+    #    h5f.createCArray(
+    #        where=h5f.root, 
+    #        name='convfactor', 
+    #        atom=tables.Float32Atom(), 
+    #        shape=shape(squid.convfactor), 
+    #        filters=tables.Filters(1))
+    #    h5f.root.convfactor[:] = squid.convfactor
+    #
+    #    load(squid, h5f)
+    #
+    #    print "Output %s" % h5_filename
+    #    h5f.close()
+    #    
