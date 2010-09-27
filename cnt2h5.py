@@ -177,6 +177,7 @@ class CNTData():
         self.info["med"]               = self.get('20s')
         self.info["category"]          = self.get('20s')
         self.info["state"]             = self.get('20s')
+        self.info["label"]             = self.get('20s')
         self.info["date"]              = self.get('10s')
         self.info["time"]              = self.get('12s')
         self.info["mean_age"]          = self.get('f')
