@@ -11,62 +11,25 @@ try:
 except:
     pass
 
-class ElectrodeDescription(IsDescription):
-    label          = StringCol(5)
-    reference      = BoolCol()
-    skip           = BoolCol()
-    reject         = BoolCol()
-    display        = BoolCol()
-    bad            = BoolCol()
-    n              = UIntCol()
-    avg_reference  = StringCol(1)
-    clipadd        = StringCol(1)
-    x_coord        = Float32Col()
-    y_coord        = Float32Col()
-    veog_wt        = Float32Col()
-    veog_std       = Float32Col()
-    snr            = Float32Col()
-    heog_wt        = Float32Col()
-    heog_std       = Float32Col()
-    baseline       = IntCol()
-    filtered       = StringCol(1)
-    fsp            = StringCol(1)
-    aux1_wt        = Float32Col()
-    aux1_std       = Float32Col()
-    senstivity     = Float32Col()
-    gain           = StringCol(1)
-    hipass         = StringCol(1)
-    lopass         = StringCol(1)
-    page           = StringCol(1)
-    size           = StringCol(1)
-    impedance      = StringCol(1)
-    physicalchnl   = StringCol(1)
-    rectify        = StringCol(1)
-    calib          = Float32Col()
-    conversion_coef= Float32Col()
-    
-
 class CNTData():
     """A class for reading Neuroscan .cnt files."""
-
+    
     def __init__(self, filename):
         self.filename = filename
         self.file = open(self.filename, 'rb')
         
-        self.info = {}
-        self.get_setup()
+        self.load_setup()
+        self.load_electrodes()
         
-        self.file.seek(900)
-        self.electrodes = {}
-        for e in xrange(self.info["nchannels"]):
-            electrode = self.get_electrode()
-            self.electrodes[electrode.label] = electrode
+        #self.save_continuous_data()
         
-        self.create_h5()
-        self.save_electrode_data()
-        self.save_continuous_data()
+        self.load_events()
         
-        self.h5.close()
+        for event in self.events:
+            print event.event_id, event.stimtype, event.keyboard, (event.offset - 3300)/(2.0 * 32), event.etype, event.code, event.epochevent, event.accept, event.accuracy
+        
+        
+        
         
     def get(self, ctype, size=1):
         """Reads and unpacks binary data into the desired ctype."""
@@ -81,55 +44,20 @@ class CNTData():
     def create_h5(self):
         print "creating h5 file"
         h5_filename = os.path.splitext(cnt_filename)[0] + ".h5"
-        self.h5 = openFile(h5_filename, mode="a", title="EEG data")
-        
-    def save_electrode_data(self):
-        print "saving electrode data"
-        #print self.electrodes
-        table = self.h5.createTable("/", 'electrodes', ElectrodeDescription, "Electrode information")
-        
-        electrode = table.row
-        for k,e in self.electrodes.items():
-            electrode["label"]         = e.label
-            electrode["reference"]     = e.reference      
-            electrode["skip"]          = e.skip           
-            electrode["reject"]        = e.reject         
-            electrode["display"]       = e.display        
-            electrode["bad"]           = e.bad            
-            electrode["n"]             = e.n              
-            electrode["avg_reference"] = e.avg_reference  
-            electrode["clipadd"]       = e.clipadd        
-            electrode["x_coord"]       = e.x_coord        
-            electrode["y_coord"]       = e.y_coord        
-            electrode["veog_wt"]       = e.veog_wt        
-            electrode["veog_std"]      = e.veog_std       
-            electrode["snr"]           = e.snr            
-            electrode["heog_wt"]       = e.heog_wt        
-            electrode["heog_std"]      = e.heog_std       
-            electrode["baseline"]      = e.baseline       
-            electrode["filtered"]      = e.filtered       
-            electrode["fsp"]           = e.fsp            
-            electrode["aux1_wt"]       = e.aux1_wt        
-            electrode["aux1_std"]      = e.aux1_std       
-            electrode["senstivity"]    = e.senstivity     
-            electrode["gain"]          = e.gain           
-            electrode["hipass"]        = e.hipass         
-            electrode["lopass"]        = e.lopass         
-            electrode["page"]          = e.page           
-            electrode["size"]          = e.size           
-            electrode["impedance"]     = e.impedance      
-            electrode["physicalchnl"]  = e.physicalchnl   
-            electrode["rectify"]       = e.rectify        
-            electrode["calib"]         = e.calib            
-            
-            electrode.append()
-            
-        table.flush()
+        self.h5 = openFile(h5_filename, mode="w", title="EEG data")
     
-    def get_electrode(self):
-        label = self.get('10s').strip('\x00')
+    def load_electrodes(self):
+        """Loads electrode data from CNT file."""
         
-        electrode = Electrode(label)
+        # Electrode data starts at 900.
+        self.file.seek(900)
+        self.electrodes = [self.get_electrode() for _ in xrange(self.info["nchannels"])]
+                
+    def get_electrode(self):
+        "Reads electrode information from CNT header."
+        
+        electrode = Electrode()
+        electrode.label          = self.get('10s').strip('\x00')
         electrode.reference      = self.get('?')
         electrode.skip           = self.get('?')
         electrode.reject         = self.get('?')
@@ -150,7 +78,7 @@ class CNTData():
         electrode.fsp            = self.get('s')
         electrode.aux1_wt        = self.get('f')
         electrode.aux1_std       = self.get('f')
-        electrode.senstivity     = self.get('f')
+        electrode.sensitivity    = self.get('f')
         electrode.gain           = self.get('s')
         electrode.hipass         = self.get('s')
         electrode.lopass         = self.get('s')
@@ -163,8 +91,10 @@ class CNTData():
         
         return electrode
     
-    def get_setup(self):
-        print "getting setup"
+    def load_setup(self):
+        """Loads CNT metadata from header."""
+        
+        self.info = {}
         
         self.file.seek(0)
         self.info["rev"]               = self.get('12s')
@@ -336,7 +266,7 @@ class CNTData():
         self.info["scaletoolx2"]       = self.get('f')
         self.info["scaletooly2"]       = self.get('f')
         self.info["port"]              = self.get('h')
-        self.info["nsamples"]        = self.get('L')
+        self.info["nsamples"]          = self.get('L')
         self.info["filterflag"]        = self.get('b')
         self.info["lowcutoff"]         = self.get('f')
         self.info["lowpoles"]          = self.get('h')
@@ -374,33 +304,84 @@ class CNTData():
             a = block * divisor
             b = (block+1) * divisor
             data[a:b] = self.get(chunk * divisor)
-    
-        #data[b:] = list(self.get((chunk * (divisor - 1)) + 'h' + str((nchannels - 1 - channel) * numbytes) + 'x'))
+        
+        # Get the remainder that doesn't divide into divisor.
         remainder =  nsamples - b
         data[b:] = self.get(chunk * (remainder-1) + "h" + ((nchannels * numbytes - (2 * channel)) * "x"))
-    
+        
+        # Convert int into float
+        baseline    = self.electrodes[channel].baseline
+        sensitivity = self.electrodes[channel].sensitivity
+        scale       = self.electrodes[channel].calib
+        
+        data = (data - baseline) * ((sensitivity * scale) / 204.8)
+        
         return data
     
     def save_continuous_data(self):
-        print "saving cont data"
+        """Get continuous data from cnt file and store it in a CArray in an HDF5 file."""
+        
+        self.create_h5()
         
         nsamples  = self.info["nsamples"]
         nchannels = self.info["nchannels"]
         
         shape = (nsamples, nchannels)
-        atom  = Int16Atom()
-        filters = Filters(complevel=5, complib='zlib')
+        atom  = Float32Atom()
+        filters = Filters(complevel=1, complib='zlib')
         
-        ca = self.h5.createCArray(self.h5.root, 'data', atom, shape, title="Continuous Integer Data", filters=filters)
+        ca = self.h5.createCArray(self.h5.root, 'data', atom, shape, title="Continuous Data", filters=filters)
         
         self.file.seek(900 + (75 * nchannels))
         
         for channel in xrange(nchannels):
             ca[:, channel] = self.get_channel(channel)
+            
+        self.h5.close()
+        
+    def event_table(self):
+        event_offset = self.info["prevfile"] * 2**32 + self.info["eventtablepos"]
+        self.file.seek(event_offset)
+        
+        self.event_table = {}
+        self.event_table["teeg"]   = self.get('B')
+        self.event_table["size"]   = self.get('L')
+        self.event_table["offset"] = self.get('L')
+    
+    def get_event(self):
+        """Read a Type 2 event."""
+        
+        event = Event()
+        event.stimtype   = self.get('H')
+        event.keyboard   = self.get('c')
+        event.temp       = self.get('B')
+        event.offset     = self.get('l')
+        event.etype      = self.get('h')
+        event.code       = self.get('h')
+        event.latency    = self.get('f')
+        event.epochevent = self.get('c')
+        event.accept     = self.get('c')
+        event.accuracy   = self.get('c')
+        
+        return event
+        
+    def load_events(self):
+        self.event_table()
+        
+        nevents = self.event_table["size"] / 19
+        
+        self.events = [self.get_event() for event in xrange(nevents)]
+    
+class Event():
+    count = 0
+    def __init__(self):
+        self.event_id = Event.count
+        Event.count += 1
+
 
 class Electrode():
-    def __init__(self, label):
-        self.label = label
+    def __init__(self):
+        pass
     
     def __unicode__(self):
         return self.label
@@ -410,34 +391,3 @@ if __name__ == "__main__":
     cnt_filename = "test.cnt"
     cnt = CNTData(cnt_filename)
     
-    #for cnt_filename in sys.argv[1:]:
-    #    print cnt_filename
-    #
-    #    cnt = CNTData(cnt_filename)
-    #
-    #    h5_filename = os.path.splitext(cnt_filename)[0] + ".h5"
-    #    array_shape = (squid.channel_count, squid.actual_sample_count)
-    #
-    #    h5f = tables.openFile(h5_filename, mode='w', title="MEG data")
-    #
-    #    h5f.createCArray(
-    #        where=h5f.root, 
-    #        name='raw_data', 
-    #        atom=tables.Int16Atom(), 
-    #        shape=array_shape, 
-    #        filters=tables.Filters(1))
-    #
-    #
-    #    h5f.createCArray(
-    #        where=h5f.root, 
-    #        name='convfactor', 
-    #        atom=tables.Float32Atom(), 
-    #        shape=shape(squid.convfactor), 
-    #        filters=tables.Filters(1))
-    #    h5f.root.convfactor[:] = squid.convfactor
-    #
-    #    load(squid, h5f)
-    #
-    #    print "Output %s" % h5_filename
-    #    h5f.close()
-    #    
