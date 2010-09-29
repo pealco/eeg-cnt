@@ -21,15 +21,10 @@ class CNTData():
         self.load_setup()
         self.load_electrodes()
         
-        #self.save_continuous_data()
-        
-        self.load_events()
+        self.save_data()
         
         for event in self.events:
-            print event.event_id, event.stimtype, event.keyboard, (event.offset - 3300)/(2.0 * 32), event.etype, event.code, event.epochevent, event.accept, event.accuracy
-        
-        
-        
+            print event.event_id, event.stimtype, event.offset
         
     def get(self, ctype, size=1):
         """Reads and unpacks binary data into the desired ctype."""
@@ -320,9 +315,7 @@ class CNTData():
     
     def save_continuous_data(self):
         """Get continuous data from cnt file and store it in a CArray in an HDF5 file."""
-        
-        self.create_h5()
-        
+                
         nsamples  = self.info["nsamples"]
         nchannels = self.info["nchannels"]
         
@@ -337,10 +330,16 @@ class CNTData():
         for channel in xrange(nchannels):
             ca[:, channel] = self.get_channel(channel)
             
+    def save_data(self):
+        self.create_h5()
+        
+        self.save_continuous_data()
+        self.save_events()
+                
         self.h5.close()
         
-    def event_table(self):
-        event_offset = self.info["prevfile"] * 2**32 + self.info["eventtablepos"]
+    def get_event_table(self):
+        event_offset = self.info["eventtablepos"]
         self.file.seek(event_offset)
         
         self.event_table = {}
@@ -355,7 +354,7 @@ class CNTData():
         event.stimtype   = self.get('H')
         event.keyboard   = self.get('c')
         event.temp       = self.get('B')
-        event.offset     = self.get('l')
+        event.offset     = self.convert_bytes_to_points(self.get('l'))
         event.etype      = self.get('h')
         event.code       = self.get('h')
         event.latency    = self.get('f')
@@ -366,11 +365,33 @@ class CNTData():
         return event
         
     def load_events(self):
-        self.event_table()
-        
+                
         nevents = self.event_table["size"] / 19
-        
         self.events = [self.get_event() for event in xrange(nevents)]
+    
+    def save_events(self):
+        
+        self.get_event_table()
+        self.load_events()
+        
+        nsamples  = self.info["nsamples"]
+        nchannels = self.info["nchannels"]
+        
+        shape = (2, len(self.events))
+        atom  = Int16Atom()
+        filters = Filters(complevel=5, complib='zlib')
+        
+        ca = self.h5.createCArray(self.h5.root, 'triggers', atom, shape, title="Trigger Data", filters=filters)
+        
+        for event in self.events:
+            ca[:, event.event_id] = [event.stimtype, event.offset]
+        
+    def convert_bytes_to_points(self, byte):
+        data_offset = 900 + (75 * self.info["nchannels"])
+        point = (byte - data_offset) / (2 * self.info["nchannels"])
+        
+        return point
+    
     
 class Event():
     count = 0
