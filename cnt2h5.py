@@ -405,6 +405,13 @@ class CNTData():
             
 if __name__ == "__main__":
     
-    cnt_filename = "test.cnt"
-    cnt = CNTData(cnt_filename)
+    for cnt_filename in sys.argv[1:]:
+        if os.path.splitext(cnt_filename)[-1].lower() != ".cnt":
+            try:
+                raise ValueError("Input files should have a .cnt extension.")
+            except ValueError:
+                print "Input files should have a .cnt extension."
+                sys.exit()
+            
+        CNTData(cnt_filename)
     
