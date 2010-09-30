@@ -385,14 +385,14 @@ class CNTData():
         self.get_event_table()
         self.load_events()
         
-        shape = (2, len(self.events))
+        shape = (len(self.events), 2)
         atom  = tables.Int16Atom()
         filters = tables.Filters(complevel=5, complib='zlib')
         
         ca = self.h5.createCArray(self.h5.root, 'triggers', atom, shape, title="Trigger Data", filters=filters)
         
-        for event in self.events:
-            ca[:, event.event_id] = [event.stimtype, event.offset]
+        for i, event in enumerate(self.events):
+            ca[i, :] = [event.stimtype, event.offset]
         
     def convert_bytes_to_points(self, byte):
         data_offset = 900 + (75 * self.info["nchannels"])
@@ -400,8 +400,6 @@ class CNTData():
         
         return point
     
-    
-
             
 if __name__ == "__main__":
     
@@ -411,7 +409,8 @@ if __name__ == "__main__":
                 raise ValueError("Input files should have a .cnt extension.")
             except ValueError:
                 print "Input files should have a .cnt extension."
-                sys.exit()
-            
-        CNTData(cnt_filename)
+                sys.exit(0)
+        else:
+            print cnt_filename
+            CNTData(cnt_filename)
     
