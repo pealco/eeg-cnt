@@ -302,7 +302,7 @@ class CNTData():
         numbytes = 2 # FIXME
         chan_offset = channel
         sample_offset = nchannels
-        self.file.seek(900 + (chan_offset * numbytes))
+        self.file.seek(900 + (nchannels * 75) + (chan_offset * numbytes))
         chunk = 'h' + str(numbytes * (nchannels - 1)) + 'x'
         divisor = int(rate)
         
