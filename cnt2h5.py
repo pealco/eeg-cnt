@@ -2,7 +2,7 @@
 
 from numpy import array, flatnonzero, arange, shape, zeros, ones
 from struct import unpack, calcsize
-from tables import *
+import tables
 import sys
 import os.path
 try:
@@ -10,6 +10,18 @@ try:
     psyco.full()
 except:
     pass
+
+class Event():
+    count = 0
+    def __init__(self):
+        self.event_id = Event.count
+        Event.count += 1
+
+
+class Electrode():
+    def __repr__(self):
+        return self.label
+
 
 class CNTData():
     """A class for reading Neuroscan .cnt files."""
@@ -23,9 +35,6 @@ class CNTData():
         
         self.save_data()
         
-        for event in self.events:
-            print event.event_id, event.stimtype, event.offset
-        
     def get(self, ctype, size=1):
         """Reads and unpacks binary data into the desired ctype."""
         if size == 1:
@@ -34,12 +43,16 @@ class CNTData():
             size = str(size)
         
         chunk = self.file.read(calcsize(size + ctype))
-        return unpack(size + ctype, chunk)[0]
+        read_chunk = unpack(size + ctype, chunk)
+        if len(read_chunk) == 1:
+            return read_chunk[0]
+        else:
+            return read_chunk
     
     def create_h5(self):
-        print "creating h5 file"
+        """Creates an empty HDF5 file based on the name of the input file."""
         h5_filename = os.path.splitext(cnt_filename)[0] + ".h5"
-        self.h5 = openFile(h5_filename, mode="w", title="EEG data")
+        self.h5 = tables.openFile(h5_filename, mode="w", title="EEG data")
     
     def load_electrodes(self):
         """Loads electrode data from CNT file."""
@@ -280,7 +293,7 @@ class CNTData():
     
     
     def get_channel(self, channel):
-        print channel
+        print "Converting channel", channel, "(%s)" % self.electrodes[channel], "..." 
         
         nsamples  = self.info["nsamples"]
         nchannels = self.info["nchannels"]
@@ -296,7 +309,7 @@ class CNTData():
         # Get data in chunks (or "blocks") of size nsamples/divisor, instead of all at once.
         data = zeros(nsamples, dtype='int16')
         for block in xrange((nsamples-1)/divisor):
-            a = block * divisor
+            a = block * divisor            
             b = (block+1) * divisor
             data[a:b] = self.get(chunk * divisor)
         
@@ -320,13 +333,11 @@ class CNTData():
         nchannels = self.info["nchannels"]
         
         shape = (nsamples, nchannels)
-        atom  = Float32Atom()
-        filters = Filters(complevel=1, complib='zlib')
-        
+        atom  = tables.Float32Atom()
+        filters = tables.Filters(complevel=0)
         ca = self.h5.createCArray(self.h5.root, 'data', atom, shape, title="Continuous Data", filters=filters)
         
         self.file.seek(900 + (75 * nchannels))
-        
         for channel in xrange(nchannels):
             ca[:, channel] = self.get_channel(channel)
             
@@ -374,12 +385,9 @@ class CNTData():
         self.get_event_table()
         self.load_events()
         
-        nsamples  = self.info["nsamples"]
-        nchannels = self.info["nchannels"]
-        
         shape = (2, len(self.events))
-        atom  = Int16Atom()
-        filters = Filters(complevel=5, complib='zlib')
+        atom  = tables.Int16Atom()
+        filters = tables.Filters(complevel=5, complib='zlib')
         
         ca = self.h5.createCArray(self.h5.root, 'triggers', atom, shape, title="Trigger Data", filters=filters)
         
@@ -393,19 +401,7 @@ class CNTData():
         return point
     
     
-class Event():
-    count = 0
-    def __init__(self):
-        self.event_id = Event.count
-        Event.count += 1
 
-
-class Electrode():
-    def __init__(self):
-        pass
-    
-    def __unicode__(self):
-        return self.label
             
 if __name__ == "__main__":
     
