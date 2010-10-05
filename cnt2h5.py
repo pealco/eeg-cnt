@@ -303,15 +303,9 @@ class CNTData():
     def get_channel(self, channel):
         print "Converting channel", channel, "(%s)" % self.electrodes[channel], "..." 
         
-        
         nsamples  = self.info["nsamples"]
         nchannels = self.info["nchannels"]
         rate      = self.info["rate"]
-        
-        begdata = 900 + (nchannels * 75)
-        enddata = self.info["eventtablepos"]
-        nsamples = (enddata - begdata)
-        
         
         numbytes = 2 # FIXME
         chan_offset = channel
