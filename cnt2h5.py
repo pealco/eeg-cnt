@@ -294,7 +294,7 @@ class CNTData():
         # The value stored for nsamples is sometimes wrong, for some reason.
         # This code corrects it.
         
-        begdata = 900 + (nchannels * 75)
+        begdata = 900 + (self.info["nchannels"] * 75)
         enddata = self.info["eventtablepos"]
         nsamples = ((enddata - begdata)/self.info["nchannels"])/2
         
