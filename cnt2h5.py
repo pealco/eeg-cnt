@@ -290,14 +290,28 @@ class CNTData():
         self.info["channeloffset"]     = self.get('l')
         self.info["autocorrectflag"]   = self.get('b')
         self.info["dcthreshold"]       = self.get('B')
-    
+        
+        # The value stored for nsamples is sometimes wrong, for some reason.
+        # This code corrects it.
+        
+        begdata = 900 + (nchannels * 75)
+        enddata = self.info["eventtablepos"]
+        nsamples = ((enddata - begdata)/self.info["nchannels"])/2
+        
+        self.info["nsamples"]          = nsamples
     
     def get_channel(self, channel):
         print "Converting channel", channel, "(%s)" % self.electrodes[channel], "..." 
         
+        
         nsamples  = self.info["nsamples"]
         nchannels = self.info["nchannels"]
         rate      = self.info["rate"]
+        
+        begdata = 900 + (nchannels * 75)
+        enddata = self.info["eventtablepos"]
+        nsamples = (enddata - begdata)
+        
         
         numbytes = 2 # FIXME
         chan_offset = channel
