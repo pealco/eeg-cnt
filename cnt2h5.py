@@ -394,7 +394,7 @@ class CNTData():
         self.load_events()
         
         shape = (len(self.events), 2)
-        atom  = tables.Int16Atom()
+        atom  = tables.Int32Atom()
         filters = tables.Filters(complevel=5, complib='zlib')
         
         ca = self.h5.createCArray(self.h5.root, 'triggers', atom, shape, title="Trigger Data", filters=filters)
